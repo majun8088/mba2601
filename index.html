@@ -26,13 +26,26 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-gray-900">MBA 2601 课程日程表</h1>
-                    <p class="text-xs text-gray-500">已内置加载云端最新排班订阅数据</p>
+                    <p class="text-xs text-gray-500">已自动同步云端最新排班</p>
                 </div>
             </div>
             
-            <div class="flex items-center gap-3 w-full sm:w-auto">
+            <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
                 <input type="text" id="searchInput" placeholder="搜索课程或关键字..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
-                <a href="https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics" target="_blank" class="whitespace-nowrap px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition font-medium">下载原始 ICS</a>
+                
+                <!-- 隐藏的管理员设置按钮（低调的小齿轮） -->
+                <button onclick="toggleSettings()" title="后台设置" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- 默认折叠的管理员配置面板 -->
+        <div id="settingsPanel" class="hidden bg-gray-50 border-t border-gray-200 px-4 py-3">
+            <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center gap-3">
+                <span class="text-xs font-bold text-red-600 uppercase tracking-wider">管理员面板</span>
+                <input type="text" id="icsUrlInput" value="https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics" class="flex-grow px-3 py-1.5 text-xs border border-gray-300 rounded bg-white">
+                <button onclick="reloadCalendar()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition">重新加载</button>
             </div>
         </div>
     </header>
@@ -57,8 +70,8 @@
             </div>
             <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                 <div>
-                    <p class="text-xs text-gray-500 font-medium">数据更新状态</p>
-                    <p class="text-sm font-semibold text-emerald-600 mt-1">● 运行正常 (已内置同步)</p>
+                    <p class="text-xs text-gray-500 font-medium">数据同步</p>
+                    <p class="text-sm font-semibold text-emerald-600 mt-1">● 运行正常</p>
                 </div>
                 <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg">⚡</div>
             </div>
@@ -96,10 +109,14 @@
         let calendar;
         let allEvents = [];
 
-        // 直接通过后端代理抓取你的 Gitee ICS 文件并自动渲染
+        // 切换管理员设置面板的显示/隐藏
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('hidden');
+        }
+
         async function loadAndRender() {
-            const icsUrl = "https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics";
-            // 使用公共代理跨域抓取
+            const icsUrl = document.getElementById('icsUrlInput').value.trim();
             const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(icsUrl);
 
             try {
@@ -108,9 +125,13 @@
                 const icsText = await response.text();
                 parseAndInitCalendar(icsText);
             } catch (err) {
-                console.warn("代理加载失败，尝试备用直接解析方案", err);
-                alert("无法自动同步远程订阅，请检查网络或使用备用方案。");
+                console.warn("代理加载失败", err);
+                alert("无法自动同步远程订阅，请检查网络。");
             }
+        }
+
+        function reloadCalendar() {
+            loadAndRender();
         }
 
         function parseAndInitCalendar(icsData) {
@@ -131,10 +152,16 @@
                 });
 
                 document.getElementById('totalEvents').innerText = allEvents.length;
-                initCalendar(allEvents);
+                
+                if (calendar) {
+                    calendar.removeAllEvents();
+                    calendar.addEventSource(allEvents);
+                } else {
+                    initCalendar(allEvents);
+                }
             } catch (e) {
                 console.error("ICS 解析错误", e);
-                alert("ICS 文件解析失败，请确认文件格式是否正确。");
+                alert("ICS 文件解析失败，请确认订阅链接是否正确。");
             }
         }
 
@@ -199,7 +226,7 @@
             calendar.addEventSource(filtered);
         });
 
-        // 页面载入后自动执行获取
+        // 页面载入后自动加载
         document.addEventListener('DOMContentLoaded', loadAndRender);
     </script>
 </body>
