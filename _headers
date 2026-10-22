@@ -1,6 +1,9 @@
 /*
   Cache-Control: public, max-age=300, must-revalidate
 
+/MBA2601.ics
+  Cache-Control: public, max-age=300
+
 /vendor/*
   Cache-Control: public, max-age=604800
 

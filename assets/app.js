@@ -8,6 +8,8 @@
 
   var CONFIG = {
     API: '/api/ics',
+    // 同源静态快照：不受 CORS 限制，作为 Functions 未部署时的兜底
+    SNAPSHOT: '/MBA2601.ics',
     DEFAULT_SOURCE: 'https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics',
     CACHE_KEY: 'mba2601.ics.v1',
     PREF_KEY: 'mba2601.prefs.v1',
@@ -27,8 +29,15 @@
     allEvents: [],
     filtered: [],
     calendar: null,
-    prefs: { source: CONFIG.DEFAULT_SOURCE, view: 'dayGridMonth', theme: 'auto', onlyFuture: false },
+    prefs: {
+      source: CONFIG.DEFAULT_SOURCE,
+      apiBase: '',
+      view: 'dayGridMonth',
+      theme: 'auto',
+      onlyFuture: false
+    },
     lastSync: 0,
+    msg: '',
     loading: false
   };
 
@@ -37,11 +46,21 @@
   /* ---------- 工具函数 ---------- */
   function pad(n) { return String(n).padStart(2, '0'); }
 
-  function fmtDate(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-  function fmtTime(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
-  function compactTime(d) { return d.getHours() + ':' + pad(d.getMinutes()); }
-  function fmtDateTime(d) { return fmtDate(d) + ' ' + fmtTime(d); }
-  function fmtMD(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function asDate(d) {
+    if (d instanceof Date) return isNaN(d.getTime()) ? new Date() : d;
+    if (typeof d === 'number') return new Date(d);
+    if (typeof d === 'string') {
+      var t = new Date(d);
+      return isNaN(t.getTime()) ? new Date() : t;
+    }
+    return new Date();
+  }
+
+  function fmtDate(d) { d = asDate(d); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function fmtTime(d) { d = asDate(d); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function compactTime(d) { d = asDate(d); return d.getHours() + ':' + pad(d.getMinutes()); }
+  function fmtDateTime(d) { d = asDate(d); return fmtDate(d) + ' ' + fmtTime(d); }
+  function fmtMD(d) { d = asDate(d); return (d.getMonth() + 1) + '/' + d.getDate(); }
 
   var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -126,6 +145,8 @@
     if (qView && ['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'listMonth'].indexOf(qView) >= 0) {
       state.prefs.view = qView;
     }
+    var qApi = q.get('api');
+    if (qApi) state.prefs.apiBase = qApi.trim().replace(/\/+$/, '');
   }
 
   function savePrefs() {
@@ -303,10 +324,102 @@
   }
 
   function viaAPI(source) {
-    var url = CONFIG.API + (source ? '?u=' + encodeURIComponent(source) : '');
+    // 依次尝试：同源 /api/ics（Pages Functions）→ 用户填的外部 Worker 地址
+    var bases = [CONFIG.API];
+    var ext = (state.prefs.apiBase || '').trim().replace(/\/+$/, '');
+    if (ext && ext.indexOf('http') === 0) bases.push(ext);
+
+    var i = 0, lastErr = null;
+    function next() {
+      if (i >= bases.length) return Promise.reject(lastErr || new Error('无可用代理'));
+      var url = bases[i++] + (source ? '?u=' + encodeURIComponent(source) : '');
+      return fetchOnce(url).catch(function (e) {
+        lastErr = e;
+        return next();
+      });
+    }
+    return next();
+  }
+
+  function fetchOnce(url) {
     return fetch(url, { headers: { Accept: 'text/calendar' }, cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-      .then(function (t) { if (!t || t.indexOf('BEGIN:VCALENDAR') === -1) throw new Error('响应不是 ICS'); return t; });
+      .then(function (r) {
+        var ct = r.headers.get('content-type') || '';
+        if (!r.ok) {
+          var e = new Error('代理返回 HTTP ' + r.status);
+          e.status = r.status;
+          // Pages Functions 没部署时，静态托管会返回 404 页面而不是 JSON
+          e.kind = (r.status === 404 && ct.indexOf('json') < 0) ? 'no-api' : 'api-error';
+          return r.text().then(function (t) {
+            try {
+              var j = JSON.parse(t);
+              if (j && j.error) e.message = j.error;
+            } catch (_) { /* 非 JSON 保持默认文案 */ }
+            throw e;
+          }, function () { throw e; });
+        }
+        return r.text();
+      })
+      .then(function (t) {
+        if (!t || t.indexOf('BEGIN:VCALENDAR') === -1) {
+          var e = new Error('代理返回内容不是 ICS');
+          e.kind = 'bad-body';
+          throw e;
+        }
+        return t;
+      })
+      .catch(function (e) {
+        if (!e.kind) e.kind = 'network';
+        throw e;
+      });
+  }
+
+  /* 同源静态快照 file:// 下无法 fetch，所以单文件版会把 ICS 内容直接注入 window */
+  function viaSnapshot() {
+    if (window.__MBA_ICS_SNAPSHOT__) {
+      return Promise.resolve({
+        text: window.__MBA_ICS_SNAPSHOT__,
+        date: window.__MBA_ICS_DATE__ ? new Date(window.__MBA_ICS_DATE__) : null
+      });
+    }
+    return fetch(CONFIG.SNAPSHOT, { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) {
+          var e = new Error('快照 HTTP ' + r.status);
+          e.kind = 'no-snapshot';
+          throw e;
+        }
+        var lm = r.headers.get('last-modified');
+        return r.text().then(function (t) {
+          if (t.indexOf('BEGIN:VCALENDAR') === -1) {
+            var e2 = new Error('快照不是 ICS');
+            e2.kind = 'no-snapshot';
+            throw e2;
+          }
+          return { text: t, date: lm ? new Date(lm) : null };
+        });
+      });
+  }
+
+  /* 把失败原因翻成人能看懂的话，方便直接照着修 */
+  function diagnose(apiErr, proxyErr) {
+    if (location.protocol === 'file:') {
+      return '以本地文件方式打开，代理接口 /api/ics 不可用。请改用 standalone.html，或用 http 服务打开';
+    }
+    if (apiErr && apiErr.kind === 'no-api') {
+      return '实时代理未生效：要么把 functions/api/ics.js 放在项目根目录，用 wrangler deploy 或 Git 集成部署；要么单独部署一个 Worker（worker/ics.js），把地址填进「设置 → 实时代理地址」。当前显示的是随站快照';
+    }
+    if (apiErr && apiErr.kind === 'api-error') {
+      return '服务端代理报错：' + (apiErr.message || ('HTTP ' + apiErr.status));
+    }
+    if (apiErr && apiErr.kind === 'bad-body') {
+      return '服务端代理返回内容异常（非 ICS 文件）';
+    }
+    if (apiErr && proxyErr) {
+      return '代理接口不可达（' + (apiErr.message || '网络错误') + '），备用公共代理同样失败';
+    }
+    if (proxyErr) return '备用公共代理不可用，请检查网络';
+    return '未知错误';
   }
 
   function viaProxy(source) {
@@ -344,16 +457,27 @@
     if (btn) { btn.disabled = true; btn.querySelector('svg').classList.add('spin'); }
 
     var source = (state.prefs.source || CONFIG.DEFAULT_SOURCE).trim();
-    var text = null, channel = '';
+    var text = null, channel = '', snapDate = null;
+    var apiErr = null, snapErr = null, proxyErr = null;
 
+    // 优先级：服务端代理（实时） → 同源静态快照 → 公共代理 → 本地缓存
     try {
       text = await viaAPI(source);
       channel = 'Cloudflare 边缘同步';
     } catch (e1) {
+      apiErr = e1;
       try {
-        text = await viaProxy(source);
-        channel = '备用通道';
-      } catch (e2) { text = null; }
+        var snap = await viaSnapshot();
+        text = snap.text;
+        snapDate = snap.date;
+        channel = '静态快照';
+      } catch (e2) {
+        snapErr = e2;
+        try {
+          text = await viaProxy(source);
+          channel = '备用通道';
+        } catch (e3) { proxyErr = e3; text = null; }
+      }
     }
 
     if (text) {
@@ -362,27 +486,30 @@
         writeCache(text);
         state.lastSync = Date.now();
         render(state.allEvents);
-        updateMeta(channel);
+        updateMeta(channel, snapDate);
         if (!silent) toast('已同步 ' + state.allEvents.length + ' 条日程', 'ok');
       } catch (pe) {
         setStatus('down', 'ICS 解析失败');
+        setHint('ICS 解析失败：' + pe.message);
         toast('ICS 解析失败：' + pe.message, 'err');
       }
     } else {
+      var reason = diagnose(apiErr, proxyErr);
       var cached = readCache();
       if (cached) {
         try {
           state.allEvents = parseICS(cached.text);
           render(state.allEvents);
           setStatus('loading', '离线数据（更新于 ' + fmtDateTime(new Date(cached.ts)) + '）');
-          toast('远程源不可达，已加载本地缓存', 'err');
+          toast('远程拉取失败，已用本地缓存', 'err');
         } catch (pe) {
           setStatus('down', '数据源和缓存均不可用');
         }
       } else {
         setStatus('down', '无法连接数据源');
-        toast('无法连接数据源，请检查网络或订阅地址', 'err');
+        toast(reason, 'err');
       }
+      setHint(reason);
     }
 
     if (btn) { btn.disabled = false; btn.querySelector('svg').classList.remove('spin'); }
@@ -493,12 +620,7 @@
     updateStats(list);
     renderUpcoming(list);
 
-    var hint = $('filterHint');
-    if (hint) {
-      hint.textContent = (kw || course || onlyFuture)
-        ? '已筛选 ' + list.length + ' / ' + state.allEvents.length + ' 条'
-        : '';
-    }
+    showCountHint((kw || course || onlyFuture) ? ('已筛选 ' + list.length + ' / ' + state.allEvents.length + ' 条') : '');
   }
 
   /* ---------- 统计 / 侧栏 ---------- */
@@ -591,8 +713,31 @@
     requestAnimationFrame(update);
   }
 
-  function updateMeta(channel) {
-    setStatus('live', channel + ' · ' + fmtTime(new Date(state.lastSync)) + ' 同步');
+  function updateMeta(channel, snapDate) {
+    var t = fmtTime(new Date(state.lastSync));
+    if (channel === '静态快照') {
+      var age = snapDate ? (fmtMD(snapDate) + ' 生成') : '内置数据';
+      setStatus('loading', channel + ' · ' + age);
+      setHint('代理未启用，使用随站快照；更新数据：tools/fetch-ics.mjs');
+      return;
+    }
+    setStatus('live', channel + ' · ' + t + ' 同步');
+    var src = state.prefs.source || CONFIG.DEFAULT_SOURCE;
+    var host = '';
+    try { host = new URL(src).hostname; } catch (e) { host = src; }
+    setHint('数据源：' + host);
+  }
+
+  function setHint(t, persistent) {
+    if (persistent !== false) state.msg = t || '';
+    var el = $('filterHint');
+    if (el) el.textContent = t || '';
+  }
+
+  /* 筛选计数提示会临时占用同一行，取消筛选后恢复原消息 */
+  function showCountHint(t) {
+    var el = $('filterHint');
+    if (el) el.textContent = t || state.msg || '';
   }
 
   /* ---------- 课程下拉 ---------- */
@@ -657,7 +802,8 @@
 
   /* ---------- 订阅链接 ---------- */
   async function copySubscribeLink() {
-    var url = new URL(CONFIG.API, location.href);
+    var base = state.prefs.apiBase || CONFIG.API;
+    var url = base.indexOf('http') === 0 ? new URL(base) : new URL(CONFIG.API, location.href);
     if (state.prefs.source && state.prefs.source !== CONFIG.DEFAULT_SOURCE) {
       url.searchParams.set('u', state.prefs.source);
     }
@@ -683,6 +829,8 @@
     setStatus('loading', '正在连接数据源...');
     var srcInput = $('icsSourceInput');
     if (srcInput) srcInput.value = state.prefs.source || CONFIG.DEFAULT_SOURCE;
+    var apiInput = $('apiBaseInput');
+    if (apiInput) apiInput.value = state.prefs.apiBase || '';
 
     try {
       await ensureLibs();
@@ -743,6 +891,13 @@
       applyTheme(next);
     });
     $('copyLinkBtn').addEventListener('click', copySubscribeLink);
+    $('applyApiBtn').addEventListener('click', function () {
+      var v = ($('apiBaseInput').value || '').trim().replace(/\/+$/, '');
+      state.prefs.apiBase = v;
+      savePrefs();
+      toast(v ? '已保存代理地址，正在实时拉取' : '已清除代理地址，改用同源接口', 'ok');
+      refresh(false);
+    });
     $('applySourceBtn').addEventListener('click', function () {
       state.prefs.source = ($('icsSourceInput').value || '').trim() || CONFIG.DEFAULT_SOURCE;
       savePrefs();
@@ -775,6 +930,7 @@
       CONFIG: CONFIG,
       state: state,
       parseICS: parseICS,
+      diagnose: diagnose,
       refresh: refresh,
       applyFilters: applyFilters
     };

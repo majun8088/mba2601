@@ -181,6 +181,7 @@ select.field { cursor: pointer; padding-right: 26px; }
 .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -.4px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #nextCountdown { font-size: 11px; color: var(--brand); font-weight: 700; white-space: nowrap; }
+#filterHint { white-space: normal; overflow: visible; line-height: 1.45; }
 .stat-icon { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 17px; flex: none; }
 .dot-status { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dot-status > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
