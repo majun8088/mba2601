@@ -26,14 +26,14 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-gray-900">MBA 2601 课程日程表</h1>
-                    <p class="text-xs text-gray-500">已自动同步云端最新排班</p>
+                    <p class="text-xs text-gray-500">已同步云端最新排班</p>
                 </div>
             </div>
             
             <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
                 <input type="text" id="searchInput" placeholder="搜索课程或关键字..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
                 
-                <!-- 隐藏的管理员设置按钮（低调的小齿轮） -->
+                <!-- 隐藏的管理员设置按钮 -->
                 <button onclick="toggleSettings()" title="后台设置" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 </button>
@@ -70,8 +70,8 @@
             </div>
             <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                 <div>
-                    <p class="text-xs text-gray-500 font-medium">数据同步</p>
-                    <p class="text-sm font-semibold text-emerald-600 mt-1">● 运行正常</p>
+                    <p class="text-xs text-gray-500 font-medium">数据同步状态</p>
+                    <p id="syncStatus" class="text-sm font-semibold text-emerald-600 mt-1">● 运行正常</p>
                 </div>
                 <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg">⚡</div>
             </div>
@@ -109,25 +109,56 @@
         let calendar;
         let allEvents = [];
 
-        // 切换管理员设置面板的显示/隐藏
         function toggleSettings() {
-            const panel = document.getElementById('settingsPanel');
-            panel.classList.toggle('hidden');
+            document.getElementById('settingsPanel').classList.toggle('hidden');
         }
 
         async function loadAndRender() {
             const icsUrl = document.getElementById('icsUrlInput').value.trim();
-            const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(icsUrl);
+            // 尝试多个备用代理通道，确保能成功抓取
+            const proxies = [
+                "https://api.allorigins.win/raw?url=" + encodeURIComponent(icsUrl),
+                "https://corsproxy.io/?\\?" + encodeURIComponent(icsUrl)
+            ];
 
-            try {
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("网络请求失败");
-                const icsText = await response.text();
-                parseAndInitCalendar(icsText);
-            } catch (err) {
-                console.warn("代理加载失败", err);
-                alert("无法自动同步远程订阅，请检查网络。");
+            let icsText = null;
+            for (let proxyUrl of proxies) {
+                try {
+                    const response = await fetch(proxyUrl);
+                    if (response.ok) {
+                        icsText = await response.text();
+                        if (icsText && icsText.includes('BEGIN:VCALENDAR')) break;
+                    }
+                } catch (e) {
+                    console.warn("代理尝试失败，切换备用通道...", e);
+                }
             }
+
+            if (icsText && icsText.includes('BEGIN:VCALENDAR')) {
+                parseAndInitCalendar(icsText);
+            } else {
+                console.error("所有远程代理加载失败");
+                document.getElementById('syncStatus').innerText = "● 远程同步失败(离线模式)";
+                document.getElementById('syncStatus').className = "text-sm font-semibold text-amber-600 mt-1";
+                // 如果远程加载失败，使用安全兜底示例数据，保证页面不卡死
+                loadFallbackData();
+            }
+        }
+
+        function loadFallbackData() {
+            const sampleIcs = `
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//MBA Schedule Fallback//EN
+BEGIN:VEVENT
+SUMMARY:MBA导学与开学典礼 (网络同步失败时的演示日程)
+DTSTART:20261022T090000Z
+DTEND:20261022T120000Z
+LOCATION:第一教学楼 101
+DESCRIPTION:当前无法连接远程 Gitee 订阅源。请检查管理员面板中的链接或网络。
+END:VEVENT
+END:VCALENDAR`;
+            parseAndInitCalendar(sampleIcs);
         }
 
         function reloadCalendar() {
@@ -161,7 +192,6 @@
                 }
             } catch (e) {
                 console.error("ICS 解析错误", e);
-                alert("ICS 文件解析失败，请确认订阅链接是否正确。");
             }
         }
 
@@ -214,7 +244,6 @@
             document.getElementById('eventModal').classList.add('hidden');
         }
 
-        // 搜索过滤
         document.getElementById('searchInput').addEventListener('input', function(e) {
             const keyword = e.target.value.toLowerCase();
             const filtered = allEvents.filter(ev => 
@@ -226,7 +255,6 @@
             calendar.addEventSource(filtered);
         });
 
-        // 页面载入后自动加载
         document.addEventListener('DOMContentLoaded', loadAndRender);
     </script>
 </body>
