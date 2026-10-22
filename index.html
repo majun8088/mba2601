@@ -1,257 +1,178 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MBA 2601 课程日程表</title>
-    <!-- 引入 Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 FullCalendar -->
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-    <!-- 引入 ical.js 用于解析 ICS -->
-    <script src="https://cdn.jsdelivr.net/npm/ical.js@1.5.0/build/ical.min.js"></script>
-    <style>
-        body { font-family: system-ui, -apple-system, sans-serif; }
-        .fc-event { cursor: pointer; padding: 2px 4px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="description" content="华东师大 MBA 2026 级全日制课程日程表，支持月/周/日/列表视图、课程筛选与日历订阅。">
+<title>MBA 2601 课程日程表</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'%3E%3Cpath d='M7 2v2H5a2 2 0 00-2 2v13a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2H7zm12 8v11H5V10h14z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/app.css">
+
+<!-- 依赖本地化：随 Cloudflare 静态资源一起分发，避免部署后受第三方 CDN 可用性影响 -->
+<script defer src="/vendor/fullcalendar.min.js"></script>
+<script defer src="/vendor/fullcalendar-zh-cn.js"></script>
+<script defer src="/vendor/ical.min.js"></script>
+<script defer src="/assets/app.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
 
-    <!-- 顶部导航栏 -->
-    <header class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div class="flex items-center space-x-3">
-                <div class="bg-blue-600 text-white p-2 rounded-lg">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold text-gray-900">MBA 2601 课程日程表</h1>
-                    <p class="text-xs text-gray-500">多通道在线实时同步</p>
-                </div>
-            </div>
-            
-            <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <input type="text" id="searchInput" placeholder="搜索课程或关键字..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
-                
-                <!-- 管理员设置开关（低调小齿轮） -->
-                <button onclick="toggleSettings()" title="后台设置" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                </button>
-            </div>
+<body>
+<header class="topbar">
+  <div class="shell">
+    <div class="topbar-row">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
         </div>
+        <div>
+          <h1>MBA 2601 课程日程表</h1>
+          <p id="calMeta">华东师大 MBA 2026 级 · 实时同步</p>
+        </div>
+      </div>
 
-        <!-- 默认折叠的管理员配置面板 -->
-        <div id="settingsPanel" class="hidden bg-gray-50 border-t border-gray-200 px-4 py-3">
-            <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center gap-3">
-                <span class="text-xs font-bold text-red-600 uppercase tracking-wider">订阅源配置</span>
-                <input type="text" id="icsUrlInput" value="https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics" class="flex-grow px-3 py-1.5 text-xs border border-gray-300 rounded bg-white">
-                <button onclick="loadAndRender()" class="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition">重新加载</button>
-            </div>
-        </div>
-    </header>
+      <div class="tools">
+        <input id="searchInput" class="field search-field" type="search" placeholder="搜索课程 / 教师 / 地点（按 / 聚焦）" aria-label="搜索课程">
+        <select id="courseFilter" class="field" aria-label="按课程筛选">
+          <option value="">全部课程</option>
+        </select>
+        <button id="refreshBtn" class="btn" title="立即刷新">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span>刷新</span>
+        </button>
+        <button id="themeBtn" class="btn" title="切换明暗主题">◐</button>
+        <button id="settingsBtn" class="btn" title="订阅源设置" aria-label="订阅源设置">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
 
-    <!-- 主体内容区 -->
-    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-6 flex flex-col">
-        <!-- 统计面板 -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs text-gray-500 font-medium">日程总数</p>
-                    <p id="totalEvents" class="text-2xl font-bold text-gray-900">0</p>
-                </div>
-                <div class="p-3 bg-blue-50 text-blue-600 rounded-lg">📊</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs text-gray-500 font-medium">当前视图状态</p>
-                    <p id="currentViewName" class="text-lg font-bold text-gray-900">月视图</p>
-                </div>
-                <div class="p-3 bg-green-50 text-green-600 rounded-lg">📅</div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs text-gray-500 font-medium">同步状态</p>
-                    <p id="syncStatus" class="text-sm font-semibold text-amber-600 mt-1">● 等待连接...</p>
-                </div>
-                <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg">⚡</div>
-            </div>
+  <div id="settingsPanel" class="settings hidden">
+    <div class="shell">
+      <div class="settings-inner">
+        <div class="field-block" style="flex:1 1 340px">
+          <label for="icsSourceInput">ICS 订阅源地址</label>
+          <input id="icsSourceInput" class="field" type="url" spellcheck="false"
+                 value="https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics">
         </div>
+        <button id="applySourceBtn" class="btn btn-primary">应用并重新加载</button>
+        <button id="resetSourceBtn" class="btn">恢复默认</button>
+        <button id="copyLinkBtn" class="btn">复制日历订阅地址</button>
+        <a class="btn" href="/standalone.html" download="MBA2601-日程表.html" title="CSS/JS 依赖全部内联，可直接双击打开或直接托管">下载单文件版</a>
+        <span class="field-block">
+          <label>说明</label>
+          <span class="up-meta">订阅地址可直接导入 iOS / Outlook / Google 日历，随源自动更新</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</header>
 
-        <!-- 日历主体 -->
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex-grow flex flex-col">
-            <div id="calendar" class="w-full flex-grow" style="min-height: 650px;"></div>
-        </div>
-    </main>
+<noscript>
+  <p style="padding:16px;margin:0;background:#fff7ed;color:#9a3412;text-align:center">
+    该日程表依赖 JavaScript 渲染，请在浏览器中启用 JavaScript 后刷新页面。
+  </p>
+</noscript>
 
-    <!-- 事件详情弹窗 -->
-    <div id="eventModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl transform transition-all">
-            <div class="flex justify-between items-start mb-4">
-                <h3 id="modalTitle" class="text-lg font-bold text-gray-900">课程详情</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            <div class="space-y-3 text-sm text-gray-600 mb-6">
-                <p><strong>开始时间：</strong><span id="modalStart"></span></p>
-                <p><strong>结束时间：</strong><span id="modalEnd"></span></p>
-                <p><strong>地点：</strong><span id="modalLocation">无</span></p>
-                <div>
-                    <strong>详细描述：</strong>
-                    <div id="modalDescription" class="mt-1 p-3 bg-gray-50 rounded-lg text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap">无</div>
-                </div>
-            </div>
-            <div class="text-right">
-                <button onclick="closeModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">关闭</button>
-            </div>
-        </div>
+<main class="shell">
+  <section class="stats">
+    <div class="card stat">
+      <div style="min-width:0">
+        <div class="stat-label">当前筛选日程</div>
+        <div id="statTotal" class="stat-value">0</div>
+        <div id="statTotalSub" class="stat-sub">等待数据…</div>
+      </div>
+      <div class="stat-icon" style="background:var(--brand-soft);color:var(--brand)">📚</div>
     </div>
 
-    <script>
-        let calendar;
-        let allEvents = [];
+    <div class="card stat">
+      <div style="min-width:0">
+        <div class="stat-label">总课时（小时）</div>
+        <div id="statHours" class="stat-value">0</div>
+        <div id="statHoursSub" class="stat-sub">按当前筛选结果统计</div>
+      </div>
+      <div class="stat-icon" style="background:color-mix(in srgb,var(--info) 14%,transparent);color:var(--info)">⏱️</div>
+    </div>
 
-        function toggleSettings() {
-            document.getElementById('settingsPanel').classList.toggle('hidden');
-        }
+    <div class="card stat">
+      <div style="min-width:0">
+        <div class="stat-label">下一节课 <span id="nextCountdown" style="color:var(--brand);font-weight:700"></span></div>
+        <div id="statNext" class="stat-value" style="font-size:16px">—</div>
+        <div id="statNextSub" class="stat-sub">等待数据…</div>
+      </div>
+      <div class="stat-icon" style="background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)">🔔</div>
+    </div>
 
-        async function loadAndRender() {
-            const rawUrl = document.getElementById('icsUrlInput').value.trim();
-            if (!rawUrl) {
-                document.getElementById('syncStatus').innerText = '● 请填写 ICS 地址';
-                document.getElementById('syncStatus').className = 'text-sm font-semibold text-amber-600 mt-1';
-                return;
-            }
+    <div class="card stat">
+      <div style="min-width:0">
+        <div class="stat-label">同步状态</div>
+        <div id="syncStatus" class="dot-status" style="margin-top:6px">
+          <span class="dot loading"></span><span>正在连接…</span>
+        </div>
+        <div id="filterHint" class="stat-sub">数据源：Gitee Raw</div>
+      </div>
+      <div class="stat-icon" style="background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)">⚡</div>
+    </div>
+  </section>
 
-            // 走 CF Pages Functions 同源代理，无 CORS 问题
-            const proxyUrl = '/proxy?url=' + encodeURIComponent(rawUrl);
+  <section class="layout">
+    <div class="card panel">
+      <div class="panel-head">
+        <span class="panel-title">🗓️ <span id="viewName">月视图</span></span>
+        <label class="up-meta" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input id="futureToggle" type="checkbox" style="accent-color:var(--brand)">只看未开始的课程
+        </label>
+      </div>
+      <div id="calendar" class="calendar-wrap skeleton sk-block" aria-live="polite"></div>
+    </div>
 
-            document.getElementById('syncStatus').innerText = '● 连接中...';
-            document.getElementById('syncStatus').className = 'text-sm font-semibold text-amber-600 mt-1';
+    <aside class="card panel panel-side">
+      <div class="panel-head"><span class="panel-title">📌 近期安排</span></div>
+      <ul id="upcomingList" class="upcoming">
+        <li><span class="up-bar"></span><span class="up-date"></span><span class="up-title">加载中…</span></li>
+      </ul>
+    </aside>
+  </section>
+</main>
 
-            try {
-                const response = await fetch(proxyUrl, { cache: 'no-cache' });
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    throw new Error(err.error || `HTTP ${response.status}`);
-                }
+<footer class="shell" style="padding-bottom:28px">
+  <p class="up-meta" style="text-align:center">
+    数据每 30 分钟自动同步 · 断网时自动回落本地缓存 · 快捷键：<code>/</code> 搜索，<code>Esc</code> 关闭弹窗
+  </p>
+</footer>
 
-                const icsText = await response.text();
-                if (!icsText.includes('BEGIN:VCALENDAR')) {
-                    throw new Error('返回内容不是有效的 ICS 文件');
-                }
+<div id="eventModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modalTitle">课程详情</h3>
+      <button id="closeModalBtn" class="icon" aria-label="关闭">✕</button>
+    </div>
+    <div class="modal-body">
+      <span class="pill"><span id="modalBadge" style="width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--brand)"></span><span id="modalCourse">未分类</span></span>
+      <div class="kv"><span>开始</span><span id="modalStart">—</span></div>
+      <div class="kv"><span>结束</span><span id="modalEnd">—</span></div>
+      <div class="kv"><span>地点</span><span id="modalLocation">未标注</span></div>
+      <div>
+        <span class="up-meta">课程详情</span>
+        <div id="modalDesc" class="desc-box">无</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="okModalBtn" class="btn btn-primary">知道了</button>
+    </div>
+  </div>
+</div>
 
-                parseAndInitCalendar(icsText);
-                document.getElementById('syncStatus').innerText = '● 同步正常';
-                document.getElementById('syncStatus').className = 'text-sm font-semibold text-emerald-600 mt-1';
-            } catch (e) {
-                console.error('加载失败:', e);
-                document.getElementById('syncStatus').innerText = '● 加载失败：' + e.message;
-                document.getElementById('syncStatus').className = 'text-sm font-semibold text-rose-600 mt-1';
-            }
-        }
-
-        function parseAndInitCalendar(icsData) {
-            try {
-                const jcalData = ICAL.parse(icsData);
-                const comp = new ICAL.Component(jcalData);
-                const vevents = comp.getAllSubcomponents('vevent');
-
-                allEvents = vevents.map(vevent => {
-                    const event = new ICAL.Event(vevent);
-                    return {
-                        title: event.summary || '无标题课程',
-                        start: event.startDate.toJSDate(),
-                        end: event.endDate ? event.endDate.toJSDate() : event.startDate.toJSDate(),
-                        description: event.description || '',
-                        location: event.location || '',
-                        extendedProps: {
-                            description: event.description || '',
-                            location: event.location || ''
-                        }
-                    };
-                });
-
-                document.getElementById('totalEvents').innerText = allEvents.length;
-                
-                if (calendar) {
-                    calendar.removeAllEvents();
-                    calendar.addEventSource(allEvents);
-                } else {
-                    initCalendar(allEvents);
-                }
-            } catch (e) {
-                console.error('ICS 解析错误', e);
-                document.getElementById('syncStatus').innerText = '● 解析失败';
-                document.getElementById('syncStatus').className = 'text-sm font-semibold text-rose-600 mt-1';
-            }
-        }
-
-        function initCalendar(events) {
-            const calendarEl = document.getElementById('calendar');
-            calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
-                locale: 'zh-cn',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth'
-                },
-                buttonText: { today: '今天', month: '月', week: '周', day: '日', list: '列表' },
-                events: events,
-                eventClick: info => showModal(info.event),
-                datesSet: info => {
-                    const titles = { 'dayGridMonth': '月视图', 'timeGridWeek': '周视图', 'timeGridDay': '日视图', 'listMonth': '列表视图' };
-                    document.getElementById('currentViewName').innerText = titles[info.view.type] || '日程视图';
-                }
-            });
-            calendar.render();
-        }
-
-        function showModal(event) {
-            document.getElementById('modalTitle').innerText = event.title;
-            document.getElementById('modalStart').innerText = event.start ? event.start.toLocaleString('zh-CN') : '未指定';
-            document.getElementById('modalEnd').innerText = event.end ? event.end.toLocaleString('zh-CN') : '未指定';
-            document.getElementById('modalLocation').innerText = event.extendedProps.location || '无';
-            document.getElementById('modalDescription').innerText = event.extendedProps.description || '无';
-            document.getElementById('eventModal').classList.remove('hidden');
-            document.getElementById('eventModal').classList.add('flex');
-        }
-
-        function closeModal() {
-            document.getElementById('eventModal').classList.remove('flex');
-            document.getElementById('eventModal').classList.add('hidden');
-        }
-
-        // 点击背景关闭弹窗
-        document.getElementById('eventModal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
-
-        // ESC 关闭弹窗
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeModal();
-        });
-
-        // 搜索功能
-        document.getElementById('searchInput').addEventListener('input', function(e) {
-            const keyword = e.target.value.toLowerCase();
-            if (!calendar) return;
-            if (!keyword) {
-                calendar.removeAllEvents();
-                calendar.addEventSource(allEvents);
-                return;
-            }
-            const filtered = allEvents.filter(ev => 
-                ev.title.toLowerCase().includes(keyword) || 
-                ev.description.toLowerCase().includes(keyword) ||
-                ev.location.toLowerCase().includes(keyword)
-            );
-            calendar.removeAllEvents();
-            calendar.addEventSource(filtered);
-        });
-
-        document.addEventListener('DOMContentLoaded', loadAndRender);
-    </script>
+<div id="toastBox" class="toast-box"></div>
 </body>
 </html>
