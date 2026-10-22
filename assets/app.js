@@ -6,6 +6,11 @@
 (function () {
   'use strict';
 
+  // 部署 worker/ics.js 后拿到的 https://xxx.workers.dev 地址。
+  // 填到这里后全站默认实时同步，所有人打开即可生效，无需在设置面板手动填写。
+  // 留空则只用同源 /api/ics（Pages Functions）与随站快照。
+  var DEFAULT_API_BASE = '';
+
   var CONFIG = {
     API: '/api/ics',
     // 同源静态快照：不受 CORS 限制，作为 Functions 未部署时的兜底
@@ -31,7 +36,7 @@
     calendar: null,
     prefs: {
       source: CONFIG.DEFAULT_SOURCE,
-      apiBase: '',
+      apiBase: DEFAULT_API_BASE || '',
       view: 'dayGridMonth',
       theme: 'auto',
       onlyFuture: false
@@ -324,10 +329,11 @@
   }
 
   function viaAPI(source) {
-    // 依次尝试：同源 /api/ics（Pages Functions）→ 用户填的外部 Worker 地址
-    var bases = [CONFIG.API];
+    // 优先级：外部 Worker（明确填了就优先）→ 同源 /api/ics（Pages Functions）
+    var bases = [];
     var ext = (state.prefs.apiBase || '').trim().replace(/\/+$/, '');
     if (ext && ext.indexOf('http') === 0) bases.push(ext);
+    bases.push(CONFIG.API);
 
     var i = 0, lastErr = null;
     function next() {
