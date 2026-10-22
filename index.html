@@ -71,7 +71,7 @@
             <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                 <div>
                     <p class="text-xs text-gray-500 font-medium">同步状态</p>
-                    <p id="syncStatus" class="text-sm font-semibold text-emerald-600 mt-1">● 连接中...</p>
+                    <p id="syncStatus" class="text-sm font-semibold text-amber-600 mt-1">● 等待连接...</p>
                 </div>
                 <div class="p-3 bg-indigo-50 text-indigo-600 rounded-lg">⚡</div>
             </div>
@@ -88,7 +88,9 @@
         <div class="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl transform transition-all">
             <div class="flex justify-between items-start mb-4">
                 <h3 id="modalTitle" class="text-lg font-bold text-gray-900">课程详情</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1">✕</button>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
             <div class="space-y-3 text-sm text-gray-600 mb-6">
                 <p><strong>开始时间：</strong><span id="modalStart"></span></p>
@@ -114,36 +116,38 @@
         }
 
         async function loadAndRender() {
-            const icsUrl = document.getElementById('icsUrlInput').value.trim();
-            // 采用多重公共代理备用通道，防止单点故障导致打不开
-            const proxyUrls = [
-                "https://api.allorigins.win/raw?url=" + encodeURIComponent(icsUrl),
-                "https://corsproxy.io/?\\?" + encodeURIComponent(icsUrl)
-            ];
-
-            let icsText = null;
-            for (let url of proxyUrls) {
-                try {
-                    const response = await fetch(url);
-                    if (response.ok) {
-                        const text = await response.text();
-                        if (text && text.includes('BEGIN:VCALENDAR')) {
-                            icsText = text;
-                            break;
-                        }
-                    }
-                } catch (e) {
-                    console.warn("通道尝试失败，切换备用通道...");
-                }
+            const rawUrl = document.getElementById('icsUrlInput').value.trim();
+            if (!rawUrl) {
+                document.getElementById('syncStatus').innerText = '● 请填写 ICS 地址';
+                document.getElementById('syncStatus').className = 'text-sm font-semibold text-amber-600 mt-1';
+                return;
             }
 
-            if (icsText) {
+            // 走 CF Pages Functions 同源代理，无 CORS 问题
+            const proxyUrl = '/proxy?url=' + encodeURIComponent(rawUrl);
+
+            document.getElementById('syncStatus').innerText = '● 连接中...';
+            document.getElementById('syncStatus').className = 'text-sm font-semibold text-amber-600 mt-1';
+
+            try {
+                const response = await fetch(proxyUrl, { cache: 'no-cache' });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${response.status}`);
+                }
+
+                const icsText = await response.text();
+                if (!icsText.includes('BEGIN:VCALENDAR')) {
+                    throw new Error('返回内容不是有效的 ICS 文件');
+                }
+
                 parseAndInitCalendar(icsText);
-                document.getElementById('syncStatus').innerText = "● 在线同步正常";
-                document.getElementById('syncStatus').className = "text-sm font-semibold text-emerald-600 mt-1";
-            } else {
-                document.getElementById('syncStatus').innerText = "● 无法连接数据源";
-                document.getElementById('syncStatus').className = "text-sm font-semibold text-rose-600 mt-1";
+                document.getElementById('syncStatus').innerText = '● 同步正常';
+                document.getElementById('syncStatus').className = 'text-sm font-semibold text-emerald-600 mt-1';
+            } catch (e) {
+                console.error('加载失败:', e);
+                document.getElementById('syncStatus').innerText = '● 加载失败：' + e.message;
+                document.getElementById('syncStatus').className = 'text-sm font-semibold text-rose-600 mt-1';
             }
         }
 
@@ -160,7 +164,11 @@
                         start: event.startDate.toJSDate(),
                         end: event.endDate ? event.endDate.toJSDate() : event.startDate.toJSDate(),
                         description: event.description || '',
-                        location: event.location || ''
+                        location: event.location || '',
+                        extendedProps: {
+                            description: event.description || '',
+                            location: event.location || ''
+                        }
                     };
                 });
 
@@ -173,7 +181,9 @@
                     initCalendar(allEvents);
                 }
             } catch (e) {
-                console.error("ICS 解析错误", e);
+                console.error('ICS 解析错误', e);
+                document.getElementById('syncStatus').innerText = '● 解析失败';
+                document.getElementById('syncStatus').className = 'text-sm font-semibold text-rose-600 mt-1';
             }
         }
 
@@ -200,8 +210,8 @@
 
         function showModal(event) {
             document.getElementById('modalTitle').innerText = event.title;
-            document.getElementById('modalStart').innerText = event.start ? event.start.toLocaleString() : '未指定';
-            document.getElementById('modalEnd').innerText = event.end ? event.end.toLocaleString() : '未指定';
+            document.getElementById('modalStart').innerText = event.start ? event.start.toLocaleString('zh-CN') : '未指定';
+            document.getElementById('modalEnd').innerText = event.end ? event.end.toLocaleString('zh-CN') : '未指定';
             document.getElementById('modalLocation').innerText = event.extendedProps.location || '无';
             document.getElementById('modalDescription').innerText = event.extendedProps.description || '无';
             document.getElementById('eventModal').classList.remove('hidden');
@@ -213,8 +223,25 @@
             document.getElementById('eventModal').classList.add('hidden');
         }
 
+        // 点击背景关闭弹窗
+        document.getElementById('eventModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+
+        // ESC 关闭弹窗
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // 搜索功能
         document.getElementById('searchInput').addEventListener('input', function(e) {
             const keyword = e.target.value.toLowerCase();
+            if (!calendar) return;
+            if (!keyword) {
+                calendar.removeAllEvents();
+                calendar.addEventSource(allEvents);
+                return;
+            }
             const filtered = allEvents.filter(ev => 
                 ev.title.toLowerCase().includes(keyword) || 
                 ev.description.toLowerCase().includes(keyword) ||
