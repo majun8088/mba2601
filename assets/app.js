@@ -9,7 +9,7 @@
   // 部署 worker/ics.js 后拿到的 https://xxx.workers.dev 地址。
   // 填到这里后全站默认实时同步，所有人打开即可生效，无需在设置面板手动填写。
   // 留空则只用同源 /api/ics（Pages Functions）与随站快照。
-  var DEFAULT_API_BASE = 'young-dawn-8e2f.qingquan0703.workers.dev';
+  var DEFAULT_API_BASE = 'https://young-dawn-8e2f.qingquan0703.workers.dev';
 
   var CONFIG = {
     API: '/api/ics',
