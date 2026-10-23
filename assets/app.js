@@ -8,14 +8,31 @@
 
   // 部署 worker/ics.js 后拿到的 https://xxx.workers.dev 地址。
   // 填到这里后全站默认实时同步，所有人打开即可生效，无需在设置面板手动填写。
-  // 留空则只用同源 /api/ics（Pages Functions）与随站快照。
+  // 留空也能实时同步：走下面的 DIRECT_SOURCES（源站带 CORS 头，浏览器直连读取）。
   var DEFAULT_API_BASE = '';
+
+  // 直连源：这些主机响应头带 Access-Control-Allow-Origin: *，浏览器可跨域直读，
+  // 因此不需要任何服务端代理 —— 纯静态托管（GitHub Pages / OSS / 任意 http 服务）也能实时同步。
+  // 顺序按可用性排：jsDelivr 有全球缓存最快，GitHub raw 次之。
+  var DIRECT_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/majun8088/class-schedule-2601@master/MBA2601.ics',
+    'https://raw.githubusercontent.com/majun8088/class-schedule-2601/refs/heads/master/MBA2601.ics',
+    'https://raw.githubusercontent.com/majun8088/class-schedule-2601/master/MBA2601.ics'
+  ];
+
+  // 哪些源可以直连（其余主机没有 CORS 头，直连必然被浏览器拦掉，直接跳过省得白等超时）
+  var DIRECT_HOSTS = [
+    'cdn.jsdelivr.net', 'fastly.jsdelivr.net', 'gcore.jsdelivr.net', 'testingcf.jsdelivr.net',
+    'raw.githubusercontent.com', 'gist.githubusercontent.com', 'raw.githubusercontent.cn'
+  ];
 
   var CONFIG = {
     API: '/api/ics',
     // 同源静态快照：不受 CORS 限制，作为 Functions 未部署时的兜底
     SNAPSHOT: '/MBA2601.ics',
-    DEFAULT_SOURCE: 'https://raw.githubusercontent.com/majun8088/class-schedule-2601/refs/heads/master/MBA2601.ics',
+    DEFAULT_SOURCE: 'https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics',
+    DIRECT: DIRECT_SOURCES,
+    DIRECT_HOSTS: DIRECT_HOSTS,
     CACHE_KEY: 'mba2601.ics.v1',
     PREF_KEY: 'mba2601.prefs.v1',
     CACHE_TTL: 15 * 60 * 1000,   // 本地缓存有效期
@@ -347,8 +364,84 @@
     return next();
   }
 
-  function fetchOnce(url) {
-    return fetch(url, { headers: { Accept: 'text/calendar' }, cache: 'no-store' })
+  function isDirectable(url) {
+    try {
+      return CONFIG.DIRECT_HOSTS.indexOf(new URL(url).hostname.toLowerCase()) >= 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /* 直连候选列表：
+     - 用户没改数据源 → 用内置 CDN 列表（jsDelivr / GitHub raw）
+     - 用户填的数据源本身可直连 → 它排第一，再补内置源兜底
+     - 用户填的数据源不可直连（Gitee 之类无 CORS 头）→ 返回空列表，直接跳过，不去白等超时
+       这类情况仍可由服务端代理或同源快照处理 */
+  function buildDirectList(source) {
+    var defaults = CONFIG.DIRECT.slice();
+    var custom = (source || '').trim();
+    if (!custom || custom === CONFIG.DEFAULT_SOURCE) return defaults;
+    if (!isDirectable(custom)) return [];
+    return [custom].concat(defaults.filter(function (u) { return u !== custom; }));
+  }
+
+  /* 直连通道：源站带 ACAO:* 时浏览器可跨域直读，无需 Worker/Pages Functions */
+  function viaDirect(source) {
+    var list = buildDirectList(source);
+    var i = 0, lastErr = null;
+    function next() {
+      if (i >= list.length) {
+        var e = lastErr || new Error('没有可直连的源');
+        if (!e.kind) e.kind = 'direct';
+        return Promise.reject(e);
+      }
+      // 6 秒够了：CDN 正常时几百毫秒就返回，超时说明这条路不通
+      return fetchOnce(list[i++], 6000).catch(function (err) {
+        lastErr = err;
+        return next();
+      });
+    }
+    return next();
+  }
+
+  /* 统一的带超时 fetch：避免请求挂死导致页面永远停在「正在连接数据源」 */
+  function timedFetch(url, ms) {
+    var wait = ms || 8000;
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = null;
+
+    // 用 race 兜底：光靠 abort() 并不可靠（部分环境下 signal 不生效就会一直挂着）
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        if (ctrl) ctrl.abort();
+        var e = new Error('请求超时（' + Math.round(wait / 1000) + ' 秒无响应）');
+        e.kind = 'timeout';
+        reject(e);
+      }, wait);
+    });
+
+    var request = fetch(url, {
+      headers: { Accept: 'text/calendar, */*' },
+      cache: 'no-store',
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (r) {
+      clearTimeout(timer);
+      return r;
+    }, function (e) {
+      clearTimeout(timer);
+      if (e && e.name === 'AbortError') {
+        var te = new Error('请求超时（' + Math.round(wait / 1000) + ' 秒无响应）');
+        te.kind = 'timeout';
+        throw te;
+      }
+      throw e;
+    });
+
+    return Promise.race([request, timeout]);
+  }
+
+  function fetchOnce(url, ms) {
+    return timedFetch(url, ms || 8000)
       .then(function (r) {
         var ct = r.headers.get('content-type') || '';
         if (!r.ok) {
@@ -388,7 +481,7 @@
         date: window.__MBA_ICS_DATE__ ? new Date(window.__MBA_ICS_DATE__) : null
       });
     }
-    return fetch(CONFIG.SNAPSHOT, { cache: 'no-store' })
+    return timedFetch(CONFIG.SNAPSHOT, 8000)
       .then(function (r) {
         if (!r.ok) {
           var e = new Error('快照 HTTP ' + r.status);
@@ -408,12 +501,22 @@
   }
 
   /* 把失败原因翻成人能看懂的话，方便直接照着修 */
-  function diagnose(apiErr, proxyErr) {
+  function diagnose(apiErr, proxyErr, directErr) {
     if (location.protocol === 'file:') {
-      return '以本地文件方式打开，代理接口 /api/ics 不可用。请改用 standalone.html，或用 http 服务打开';
+      return '以本地文件方式打开，代理接口 /api/ics 不可用。页面会尝试 CDN 直连；若也失败请把整个目录用 http 服务打开，或改用 standalone.html';
+    }
+    if (directErr && directErr.kind === 'timeout') {
+      return 'CDN 直连超时（6 秒无响应），当前网络可能访问不到 jsdelivr / raw.githubusercontent.com。建议改用已知可访问的源，或部署 Worker 后在「设置 → 实时代理地址」填入地址';
+    }
+    if (directErr && directErr.kind === 'bad-body') {
+      return '直连拿到了响应但内容不是 ICS（多半被换成了 HTML 登录页/反爬页）。可在「设置 → 数据源」换成 jsDelivr 或 GitHub raw 地址';
     }
     if (apiErr && apiErr.kind === 'no-api') {
-      return '实时代理未生效：要么把 functions/api/ics.js 放在项目根目录，用 wrangler deploy 或 Git 集成部署；要么单独部署一个 Worker（worker/ics.js），把地址填进「设置 → 实时代理地址」。当前显示的是随站快照';
+      return '服务端代理未生效（/api/ics 返回 404）：Functions/Worker 没部署或被当成纯静态站点托管了。CDN 直连也已失败' +
+        (proxyErr ? '，公共代理同样不可用' : '') + '。最快的修法：在「设置 → 数据源」填 jsDelivr 地址（带 CORS 头，无需代理）';
+    }
+    if (apiErr && apiErr.kind === 'timeout') {
+      return '实时代理无响应（8 秒超时），当前显示随站快照。检查填的 Worker 地址能否直接打开，或改用 CF Pages 的 /api/ics';
     }
     if (apiErr && apiErr.kind === 'api-error') {
       return '服务端代理报错：' + (apiErr.message || ('HTTP ' + apiErr.status));
@@ -437,7 +540,7 @@
     function attempt() {
       if (i >= targets.length) return Promise.reject(new Error('全部通道失败'));
       var url = targets[i++];
-      return fetch(url, { cache: 'no-store' })
+      return timedFetch(url, 8000)
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
         .then(function (t) { if (t.indexOf('BEGIN:VCALENDAR') === -1) throw new Error('非法内容'); return t; })
         .catch(attempt);
@@ -464,25 +567,32 @@
 
     var source = (state.prefs.source || CONFIG.DEFAULT_SOURCE).trim();
     var text = null, channel = '', snapDate = null;
-    var apiErr = null, snapErr = null, proxyErr = null;
+    var apiErr = null, snapErr = null, proxyErr = null, directErr = null;
 
-    // 优先级：服务端代理（实时） → 同源静态快照 → 公共代理 → 本地缓存
+    // 优先级：CDN 直连（实时）→ 服务端代理（实时）→ 同源静态快照 → 公共代理 → 本地缓存
+    // 直连排第一的原因：不依赖 Functions/Worker 是否已部署，源站带 CORS 头就能实时取到
     try {
-      text = await viaAPI(source);
-      channel = 'Cloudflare 边缘同步';
-    } catch (e1) {
-      apiErr = e1;
+      text = await viaDirect(source);
+      channel = '实时同步';
+    } catch (e0) {
+      directErr = e0;
       try {
-        var snap = await viaSnapshot();
-        text = snap.text;
-        snapDate = snap.date;
-        channel = '静态快照';
-      } catch (e2) {
-        snapErr = e2;
+        text = await viaAPI(source);
+        channel = '实时同步';
+      } catch (e1) {
+        apiErr = e1;
         try {
-          text = await viaProxy(source);
-          channel = '备用通道';
-        } catch (e3) { proxyErr = e3; text = null; }
+          var snap = await viaSnapshot();
+          text = snap.text;
+          snapDate = snap.date;
+          channel = '静态快照';
+        } catch (e2) {
+          snapErr = e2;
+          try {
+            text = await viaProxy(source);
+            channel = '备用通道';
+          } catch (e3) { proxyErr = e3; text = null; }
+        }
       }
     }
 
@@ -500,7 +610,7 @@
         toast('ICS 解析失败：' + pe.message, 'err');
       }
     } else {
-      var reason = diagnose(apiErr, proxyErr);
+      var reason = diagnose(apiErr, proxyErr, directErr);
       var cached = readCache();
       if (cached) {
         try {
@@ -937,6 +1047,9 @@
       state: state,
       parseICS: parseICS,
       diagnose: diagnose,
+      timedFetch: timedFetch,
+      buildDirectList: buildDirectList,
+      viaDirect: viaDirect,
       refresh: refresh,
       applyFilters: applyFilters
     };

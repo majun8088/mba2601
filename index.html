@@ -63,13 +63,13 @@
         <div class="field-block" style="flex:1 1 340px">
           <label for="icsSourceInput">ICS 订阅源地址</label>
           <input id="icsSourceInput" class="field" type="url" spellcheck="false"
-                 value="https://raw.githubusercontent.com/majun8088/class-schedule-2601/refs/heads/master/MBA2601.ics">
+                 value="https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics">
         </div>
         <button id="applySourceBtn" class="btn btn-primary">应用并重新加载</button>
         <button id="resetSourceBtn" class="btn">恢复默认</button>
         <div class="field-block" style="flex:1 1 300px">
           <label for="apiBaseInput">实时代理地址（可选）</label>
-          <input id="apiBaseInput" class="field" type="url" spellcheck="false" placeholder="留空=只用同源接口，例如 https://mba2601-ics.xxx.workers.dev">
+          <input id="apiBaseInput" class="field" type="url" spellcheck="false" placeholder="默认已走 CDN 直连；仅在需要代理时填 https://xxx.workers.dev">
         </div>
         <button id="applyApiBtn" class="btn btn-primary">保存并实时刷新</button>
         <button id="copyLinkBtn" class="btn">复制日历订阅地址</button>
@@ -124,7 +124,7 @@
         <div id="syncStatus" class="dot-status" style="margin-top:6px">
           <span class="dot loading"></span><span>正在连接…</span>
         </div>
-        <div id="filterHint" class="stat-sub">数据源：Github Raw</div>
+        <div id="filterHint" class="stat-sub">数据源：Gitee Raw</div>
       </div>
       <div class="stat-icon" style="background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)">⚡</div>
     </div>
