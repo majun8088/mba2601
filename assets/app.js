@@ -9,13 +9,13 @@
   // 部署 worker/ics.js 后拿到的 https://xxx.workers.dev 地址。
   // 填到这里后全站默认实时同步，所有人打开即可生效，无需在设置面板手动填写。
   // 留空则只用同源 /api/ics（Pages Functions）与随站快照。
-  var DEFAULT_API_BASE = 'https://young-dawn-8e2f.qingquan0703.workers.dev';
+  var DEFAULT_API_BASE = '';
 
   var CONFIG = {
     API: '/api/ics',
     // 同源静态快照：不受 CORS 限制，作为 Functions 未部署时的兜底
     SNAPSHOT: '/MBA2601.ics',
-    DEFAULT_SOURCE: 'https://raw.giteeusercontent.com/blue0703/class-schedule-2601/raw/master/MBA2601.ics',
+    DEFAULT_SOURCE: 'https://raw.githubusercontent.com/majun8088/class-schedule-2601/refs/heads/master/MBA2601.ics',
     CACHE_KEY: 'mba2601.ics.v1',
     PREF_KEY: 'mba2601.prefs.v1',
     CACHE_TTL: 15 * 60 * 1000,   // 本地缓存有效期
